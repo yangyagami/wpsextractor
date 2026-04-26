@@ -190,6 +190,24 @@ static int load_central_dir(zip_reader_t *zr,
     return 0;
 }
 
+/* ---- 快速 ZIP magic 检查 --------------------------------------- */
+
+int zip_check_magic(const char *path)
+{
+    FILE *fp;
+    uint8_t magic[4];
+
+    fp = fopen(path, "rb");
+    if (!fp) return 0;
+
+    int ret = 0;
+    if (fread(magic, 1, 4, fp) == 4 && read_u32(magic) == ZIP_LOCAL_SIG)
+        ret = 1;
+
+    fclose(fp);
+    return ret;
+}
+
 /* ---- ZIP 打开 / 关闭 ------------------------------------------- */
 
 zip_reader_t *zip_open(const char *path)
@@ -206,6 +224,17 @@ zip_reader_t *zip_open(const char *path)
 
     zr->fp = fopen(path, "rb");
     if (!zr->fp) { free(zr); return NULL; }
+
+    /* 验证 ZIP magic number: PK\x03\x04 */
+    {
+        uint8_t magic[4];
+        rewind(zr->fp);
+        if (fread(magic, 1, 4, zr->fp) != 4 || read_u32(magic) != ZIP_LOCAL_SIG) {
+            /* 不是有效的 ZIP 文件 */
+            zip_close(zr);
+            return NULL;
+        }
+    }
 
     fseek(zr->fp, 0, SEEK_END);
     fsize = (size_t)ftell(zr->fp);

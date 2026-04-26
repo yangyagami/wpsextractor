@@ -3,3 +3,7 @@ build/
 *.a
 *.so
 examples/extract
+*.wps
+*.et
+*.dps
+*.zip

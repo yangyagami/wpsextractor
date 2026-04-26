@@ -33,7 +33,11 @@ int main(int argc, char *argv[])
     /* 检测文件类型 */
     rc = wpsext_detect_type(argv[1], &ftype);
     if (rc != WPSEXT_OK) {
-        fprintf(stderr, "Cannot detect file type: %s\n", wpsext_strerror(rc));
+        fprintf(stderr, "Error: %s\n", wpsext_strerror(rc));
+        /* 建议检查文件格式 */
+        fprintf(stderr, "Tip: This library only supports OOXML-based .wps/.et/.dps files\n");
+        fprintf(stderr, "     (saved by WPS Office v9+). Old binary format is not supported.\n");
+        fprintf(stderr, "     Try re-saving your file with 'Save as OOXML format' in WPS Office.\n");
         wpsext_cleanup();
         return 1;
     }

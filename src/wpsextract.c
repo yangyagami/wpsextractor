@@ -6,6 +6,7 @@
  */
 
 #include "internal.h"
+#include <strings.h>   /* strcasecmp */
 
 /* ================================================================
  * 库初始化 / 清理
@@ -43,7 +44,7 @@ const char *wpsext_strerror(int errcode)
     case WPSEXT_ERR_FILE:
         return "File open/read error";
     case WPSEXT_ERR_FORMAT:
-        return "Unsupported or corrupt file format";
+        return "Unsupported or corrupt file format (only OOXML-based .wps/.et/.dps files are supported, old WPS binary format is not supported)";
     case WPSEXT_ERR_MEMORY:
         return "Memory allocation failed";
     case WPSEXT_ERR_INTERNAL:
@@ -114,9 +115,31 @@ int wpsext_detect_type(const char *path, wpsext_filetype_t *type)
     if (!path || !type)
         return WPSEXT_ERR_INVALID_ARG;
 
-    zr = zip_open(path);
-    if (!zr)
+    /* 先检查扩展名 */
+    const char *ext = strrchr(path, '.');
+    if (ext) {
+        if (strcasecmp(ext, ".wps") == 0 ||
+            strcasecmp(ext, ".et")  == 0 ||
+            strcasecmp(ext, ".dps") == 0) {
+            /* 扩展名匹配，继续 */
+        } else {
+            *type = WPSEXT_TYPE_UNKNOWN;
+            return WPSEXT_ERR_FORMAT;
+        }
+    }
+
+    /* 快速检查是否为 ZIP 格式 */
+    if (!zip_check_magic(path)) {
+        *type = WPSEXT_TYPE_UNKNOWN;
+        /* 文件名是 .wps 但非 ZIP — 可能是旧版 WPS 二进制格式 */
         return WPSEXT_ERR_FORMAT;
+    }
+
+    zr = zip_open(path);
+    if (!zr) {
+        *type = WPSEXT_TYPE_UNKNOWN;
+        return WPSEXT_ERR_FORMAT;
+    }
 
     detected = format_detect(zr);
     zip_close(zr);

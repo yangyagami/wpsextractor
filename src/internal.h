@@ -56,6 +56,12 @@ int           zip_read_entry(zip_reader_t *zr,
                              uint8_t **out_data,
                              size_t *out_size);
 
+/**
+ * @brief 快速检查文件是否以 ZIP magic (PK\x03\x04) 开头
+ * @return 1 是 ZIP 文件，0 不是
+ */
+int           zip_check_magic(const char *path);
+
 /* ================================================================
  * XML Parser 内部接口
  * ================================================================ */
