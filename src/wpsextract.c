@@ -110,39 +110,44 @@ static wpsext_ctx_t *get_effective_ctx(wpsext_ctx_t *ctx)
 int wpsext_detect_type(const char *path, wpsext_filetype_t *type)
 {
     zip_reader_t *zr;
-    wpsext_filetype_t detected;
+    wpsext_filetype_t detected = WPSEXT_TYPE_UNKNOWN;
 
     if (!path || !type)
         return WPSEXT_ERR_INVALID_ARG;
 
+    *type = WPSEXT_TYPE_UNKNOWN;
+
     /* 先检查扩展名 */
     const char *ext = strrchr(path, '.');
     if (ext) {
-        if (strcasecmp(ext, ".wps") == 0 ||
-            strcasecmp(ext, ".et")  == 0 ||
-            strcasecmp(ext, ".dps") == 0) {
-            /* 扩展名匹配，继续 */
+        if (strcasecmp(ext, ".wps") == 0) {
+            /* .wps: 可能是 OOXML 或旧版二进制格式 */
+            /* 试试 ZIP（OOXML） */
+            if (zip_check_magic(path)) {
+                zr = zip_open(path);
+                if (zr) {
+                    detected = format_detect(zr);
+                    zip_close(zr);
+                }
+            }
+            /* 如果 ZIP 不行，试试 OLE2（旧版二进制） */
+            if (detected == WPSEXT_TYPE_UNKNOWN && ole2_check_magic(path)) {
+                detected = WPSEXT_TYPE_WPS;
+            }
+        } else if (strcasecmp(ext, ".et") == 0 ||
+                   strcasecmp(ext, ".dps") == 0) {
+            /* .et / .dps: 目前只支持 OOXML */
+            if (zip_check_magic(path)) {
+                zr = zip_open(path);
+                if (zr) {
+                    detected = format_detect(zr);
+                    zip_close(zr);
+                }
+            }
         } else {
-            *type = WPSEXT_TYPE_UNKNOWN;
             return WPSEXT_ERR_FORMAT;
         }
     }
-
-    /* 快速检查是否为 ZIP 格式 */
-    if (!zip_check_magic(path)) {
-        *type = WPSEXT_TYPE_UNKNOWN;
-        /* 文件名是 .wps 但非 ZIP — 可能是旧版 WPS 二进制格式 */
-        return WPSEXT_ERR_FORMAT;
-    }
-
-    zr = zip_open(path);
-    if (!zr) {
-        *type = WPSEXT_TYPE_UNKNOWN;
-        return WPSEXT_ERR_FORMAT;
-    }
-
-    detected = format_detect(zr);
-    zip_close(zr);
 
     *type = detected;
     return (detected != WPSEXT_TYPE_UNKNOWN) ? WPSEXT_OK : WPSEXT_ERR_FORMAT;
@@ -157,9 +162,8 @@ int wpsext_extract_file(wpsext_ctx_t *ctx,
                         char **out_text,
                         size_t *out_len)
 {
-    zip_reader_t *zr;
+    int rc = WPSEXT_ERR_FORMAT;
     wpsext_filetype_t ftype;
-    int rc;
 
     if (!path || !out_text)
         return WPSEXT_ERR_INVALID_ARG;
@@ -183,34 +187,39 @@ int wpsext_extract_file(wpsext_ctx_t *ctx,
             return WPSEXT_ERR_TOO_LARGE;
     }
 
-    /* 打开 ZIP */
-    zr = zip_open(path);
-    if (!zr)
-        return WPSEXT_ERR_FORMAT;
+    /* 判断是 ZIP (OOXML) 还是 OLE2 (二进制) */
+    if (zip_check_magic(path)) {
+        /* ---- OOXML 格式 ---- */
+        zip_reader_t *zr = zip_open(path);
+        if (!zr)
+            return WPSEXT_ERR_FORMAT;
 
-    /* 检测文件类型 */
-    ftype = format_detect(zr);
-    if (ftype == WPSEXT_TYPE_UNKNOWN) {
+        ftype = format_detect(zr);
+        if (ftype == WPSEXT_TYPE_UNKNOWN) {
+            zip_close(zr);
+            return WPSEXT_ERR_FORMAT;
+        }
+
+        switch (ftype) {
+        case WPSEXT_TYPE_WPS:
+            rc = wps_text_extract(zr, out_text, out_len);
+            break;
+        case WPSEXT_TYPE_ET:
+        case WPSEXT_TYPE_DPS:
+            rc = WPSEXT_ERR_FORMAT;
+            break;
+        default:
+            rc = WPSEXT_ERR_FORMAT;
+            break;
+        }
+
         zip_close(zr);
+    } else if (ole2_check_magic(path)) {
+        /* ---- 旧版 WPS 二进制格式 ---- */
+        rc = wps_binary_extract_file(path, out_text, out_len);
+    } else {
         return WPSEXT_ERR_FORMAT;
     }
-
-    /* 按类型派发提取 */
-    switch (ftype) {
-    case WPSEXT_TYPE_WPS:
-        rc = wps_text_extract(zr, out_text, out_len);
-        break;
-    case WPSEXT_TYPE_ET:
-    case WPSEXT_TYPE_DPS:
-        /* 尚未实现 */
-        rc = WPSEXT_ERR_FORMAT;
-        break;
-    default:
-        rc = WPSEXT_ERR_FORMAT;
-        break;
-    }
-
-    zip_close(zr);
 
     /* 检查输出大小限制 */
     if (rc == WPSEXT_OK && ctx->opts.max_output_size > 0 && out_len) {

@@ -97,6 +97,23 @@ wpsext_filetype_t format_detect(zip_reader_t *zr);
 int wps_text_extract(zip_reader_t *zr, char **out_text, size_t *out_len);
 
 /* ================================================================
+ * WPS 二进制格式 (OLE2) 提取
+ * ================================================================ */
+
+/**
+ * @brief 检查文件是否为 OLE2 格式
+ */
+int         ole2_check_magic(const char *path);
+
+/**
+ * @brief 从文件路径提取旧版 WPS 二进制格式的文本
+ * @param path      文件路径
+ * @param out_text  输出文本
+ * @param out_len   输出长度
+ */
+int wps_binary_extract_file(const char *path, char **out_text, size_t *out_len);
+
+/* ================================================================
  * 动态字符串构建器 (简易)
  * ================================================================ */
 
