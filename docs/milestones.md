@@ -40,22 +40,29 @@
 
 ## M2: .wps 文字提取 (v0.2.0) ✅
 
-**目标**：从 .wps 文件的 `word/document.xml` 提取段落文本
+**目标**：同时支持 OOXML 格式和旧版 WPS 二进制格式的 .wps 文件文本提取
 
 ### 任务清单
 
-- [x] 实现 `wps_text.c`
+- [x] 实现 `wps_text.c`（OOXML/ZIP 格式）
 - [x] 处理 `<w:p>`, `<w:r>`, `<w:t>` 标签
 - [x] 支持 `<w:br/>` 换行符、`<w:tab/>` 制表符
 - [x] 支持 `xml:space="preserve"` 空白保留
 - [x] 段落间以 `\n` 分隔
 - [x] 集成到 `wpsext_extract_file()`
+- [x] 实现 `wps_binary.c`（旧版 WPS 二进制格式）
+  - [x] OLE2 文件解析：FAT、DIFAT、Mini FAT、Mini Stream、目录遍历
+  - [x] FIB 解析：获取 ccpText（正文文本字符数）
+  - [x] Pcdt 解析：从 0Table 找到分段表
+  - [x] UTF-16LE 文本读取 + 控制字符清洗
+- [x] 自动识别 ZIP 和 OLE2 两种 .wps 格式
 
 ### 实现日志
 
 | 日期 | 内容 | 备注 |
 |------|------|------|
-| 2026-04-25 | 完成 wps_text.c，通过 SAX 回调解析 word/document.xml | 等待实际 .wps 文件测试 |
+| 2026-04-25 | 完成 wps_text.c (OOXML) | 等待实际 .wps 文件测试 |
+| 2026-04-26 | 完成 wps_binary.c (OLE2) + 集成 + 测试通过 | `'这是一个测试。'` 成功提取 |
 
 ---
 
