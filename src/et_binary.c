@@ -92,7 +92,7 @@ static int sst_add(etb_sst_t *sst, const char *str, size_t len)
     return 0;
 }
 
-/* ---- 解析 SST 记录（简单格式 UTF-16LE） ------------------------ */
+/* ---- 解析 SST 记录（WPS 格式: char_count(2 LE) + flags(1) + text） - */
 
 static int parse_sst_record(const uint8_t *data, size_t len,
                             etb_sst_t *sst)
@@ -101,60 +101,56 @@ static int parse_sst_record(const uint8_t *data, size_t len,
 
     size_t pos = 8;  /* 跳过 unique_count(4) + total_count(4) */
 
-    while (pos + 2 <= len) {
-        uint16_t char_count;
-        size_t byte_len;
-        size_t text_pos;
-        /* 默认格式: char_count(2 LE) + text(UTF-16LE, char_count*2 字节) */
-        char_count = r_u16(data + pos);
-        byte_len = (size_t)char_count * 2;
-        text_pos = pos + 2;
+    while (pos + 3 <= len) {  /* 至少需要 char_count(2) + flags(1) */
+        uint16_t char_count = r_u16(data + pos);
+        uint8_t  flags      = data[pos + 2];
+        /* WPS 中 flags&1 == 1 表示 Unicode (2 字节/字符) */
+        size_t bytes_per_char = (flags & 1) ? 2 : 1;
+        size_t byte_len       = (size_t)char_count * bytes_per_char;
+        size_t text_pos       = pos + 3;
 
-        /* 如果 char_count*2 超出剩余空间，尝试 WPS 变体格式 */
-        if (pos + 2 + byte_len > len && pos + 4 <= len) {
-            /* WPS 变体: char_count 为 1 字节，文本前有 2 字节前缀 */
-            char_count = data[pos + 1];  /* 1 字节 char_count */
-            byte_len   = (size_t)char_count * 2;
-            text_pos   = pos + 4;        /* 跳过 2 字节 char_count + 2 字节前缀 */
-        }
-
-        /* 如果仍然超出，放弃后续字符串 */
         if (text_pos + byte_len > len)
             break;
 
-        /* 跳过文本前缀中的空白 Unicode 字符 (U+0000) */
-        while (byte_len >= 2 && r_u16(data + text_pos) == 0) {
-            text_pos += 2;
-            byte_len -= 2;
-        }
-
-        if (byte_len < 2)
-            break;
-
-        /* 将 UTF-16LE 转为 UTF-8 */
+        /* 将文本转为 UTF-8 */
         size_t utf8_len = 0;
-        for (size_t i = 0; i < byte_len; i += 2) {
-            uint16_t ch = r_u16(data + text_pos + i);
-            if (ch < 0x80) utf8_len += 1;
-            else if (ch < 0x800) utf8_len += 2;
-            else utf8_len += 3;
+        for (uint16_t ci = 0; ci < char_count; ci++) {
+            if (bytes_per_char == 2) {
+                uint16_t ch = r_u16(data + text_pos + ci * 2);
+                if (ch < 0x80)      utf8_len += 1;
+                else if (ch < 0x800) utf8_len += 2;
+                else                 utf8_len += 3;
+            } else {
+                unsigned char c = data[text_pos + ci];
+                utf8_len += (c < 0x80) ? 1 : 2;  /* 假设是 Latin-1 */
+            }
         }
 
         char *utf8 = (char *)malloc(utf8_len + 1);
         if (!utf8) return -1;
 
         size_t out_pos = 0;
-        for (size_t i = 0; i < byte_len; i += 2) {
-            uint16_t ch = r_u16(data + text_pos + i);
-            if (ch < 0x80) {
-                utf8[out_pos++] = (char)ch;
-            } else if (ch < 0x800) {
-                utf8[out_pos++] = (char)(0xC0 | (ch >> 6));
-                utf8[out_pos++] = (char)(0x80 | (ch & 0x3F));
+        for (uint16_t ci = 0; ci < char_count; ci++) {
+            if (bytes_per_char == 2) {
+                uint16_t ch = r_u16(data + text_pos + ci * 2);
+                if (ch < 0x80) {
+                    utf8[out_pos++] = (char)ch;
+                } else if (ch < 0x800) {
+                    utf8[out_pos++] = (char)(0xC0 | (ch >> 6));
+                    utf8[out_pos++] = (char)(0x80 | (ch & 0x3F));
+                } else {
+                    utf8[out_pos++] = (char)(0xE0 | (ch >> 12));
+                    utf8[out_pos++] = (char)(0x80 | ((ch >> 6) & 0x3F));
+                    utf8[out_pos++] = (char)(0x80 | (ch & 0x3F));
+                }
             } else {
-                utf8[out_pos++] = (char)(0xE0 | (ch >> 12));
-                utf8[out_pos++] = (char)(0x80 | ((ch >> 6) & 0x3F));
-                utf8[out_pos++] = (char)(0x80 | (ch & 0x3F));
+                unsigned char c = data[text_pos + ci];
+                if (c < 0x80) {
+                    utf8[out_pos++] = (char)c;
+                } else {
+                    utf8[out_pos++] = (char)(0xC0 | (c >> 6));
+                    utf8[out_pos++] = (char)(0x80 | (c & 0x3F));
+                }
             }
         }
         utf8[out_pos] = '\0';
@@ -162,7 +158,6 @@ static int parse_sst_record(const uint8_t *data, size_t len,
         sst_add(sst, utf8, out_pos);
         free(utf8);
 
-        /* 跳过已处理的数据 */
         pos = text_pos + byte_len;
     }
 
