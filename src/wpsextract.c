@@ -134,9 +134,21 @@ int wpsext_detect_type(const char *path, wpsext_filetype_t *type)
             if (detected == WPSEXT_TYPE_UNKNOWN && ole2_check_magic(path)) {
                 detected = WPSEXT_TYPE_WPS;
             }
-        } else if (strcasecmp(ext, ".et") == 0 ||
-                   strcasecmp(ext, ".dps") == 0) {
-            /* .et / .dps: 目前只支持 OOXML */
+        } else if (strcasecmp(ext, ".et") == 0) {
+            /* .et: 先试 OOXML (ZIP) */
+            if (zip_check_magic(path)) {
+                zr = zip_open(path);
+                if (zr) {
+                    detected = format_detect(zr);
+                    zip_close(zr);
+                }
+            }
+            /* 如果 ZIP 不行，试试 OLE2（旧版二进制） */
+            if (detected == WPSEXT_TYPE_UNKNOWN && ole2_check_magic(path)) {
+                detected = WPSEXT_TYPE_ET;
+            }
+        } else if (strcasecmp(ext, ".dps") == 0) {
+            /* .dps: 目前只支持 OOXML */
             if (zip_check_magic(path)) {
                 zr = zip_open(path);
                 if (zr) {
@@ -217,8 +229,14 @@ int wpsext_extract_file(wpsext_ctx_t *ctx,
 
         zip_close(zr);
     } else if (ole2_check_magic(path)) {
-        /* ---- 旧版 WPS 二进制格式 ---- */
-        rc = wps_binary_extract_file(path, out_text, out_len);
+        /* ---- 旧版二进制格式 ---- */
+        /* 根据扩展名区分 .wps(文字) 和 .et(表格) */
+        const char *ext = strrchr(path, '.');
+        if (ext && strcasecmp(ext, ".et") == 0) {
+            rc = et_binary_extract_file(path, out_text, out_len);
+        } else {
+            rc = wps_binary_extract_file(path, out_text, out_len);
+        }
     } else {
         return WPSEXT_ERR_FORMAT;
     }
