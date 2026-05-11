@@ -96,6 +96,15 @@ wpsext_filetype_t format_detect(zip_reader_t *zr);
  */
 int wps_text_extract(zip_reader_t *zr, char **out_text, size_t *out_len);
 
+/**
+ * @brief 从 .et 文件的 xl/worksheets/sheet*.xml 提取单元格文本
+ * @param zr         已打开的 ZIP reader
+ * @param out_text   输出文本（调用方 free）
+ * @param out_len    输出长度
+ * @return WPSEXT_OK / 错误码
+ */
+int et_table_extract(zip_reader_t *zr, char **out_text, size_t *out_len);
+
 /* ================================================================
  * WPS 二进制格式 (OLE2) 提取
  * ================================================================ */

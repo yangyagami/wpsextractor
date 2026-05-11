@@ -205,6 +205,8 @@ int wpsext_extract_file(wpsext_ctx_t *ctx,
             rc = wps_text_extract(zr, out_text, out_len);
             break;
         case WPSEXT_TYPE_ET:
+            rc = et_table_extract(zr, out_text, out_len);
+            break;
         case WPSEXT_TYPE_DPS:
             rc = WPSEXT_ERR_FORMAT;
             break;

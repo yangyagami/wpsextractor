@@ -28,6 +28,7 @@ SRCS = $(SRCDIR)/wpsextract.c \
        $(SRCDIR)/format_detect.c \
        $(SRCDIR)/wps_text.c \
        $(SRCDIR)/wps_binary.c \
+       $(SRCDIR)/et_table.c \
        $(SRCDIR)/strbuf.c
 
 # 目标文件
