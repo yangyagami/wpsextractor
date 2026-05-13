@@ -118,14 +118,24 @@ static int wps_binary_extract_int(ole2_ctx_t *ole, char **out_text, size_t *out_
             uint32_t cp0 = r_u32(tbl_data + cp_start);
             uint32_t cp1 = r_u32(tbl_data + cp_start + 4);
 
-            if (cp0 == 0 && cp1 == ccpText) {
+            if (cp0 == 0) {
                 uint8_t *pcd = tbl_data + pcd_start;
                 uint32_t flda = r_u32(pcd + 2);
 
-                uint32_t fc_candidate = r_u32(pcd + 2);
+                uint32_t fc_candidate = flda & 0x3FFFFFFF;
+                if (fc_candidate > 0 && fc_candidate < wd_size) {
+                    fc = fc_candidate;
+                    is_compressed = (flda & 0x40000000) ? 1 : 0;
+                    ccpText = cp1;  /* 使用 Pcdt 的 cp1 作为有效字符数 */
+                    found_pcdt = 1;
+                    break;
+                }
+
+                fc_candidate = r_u32(pcd + 2);
                 if (fc_candidate > 0 && fc_candidate < wd_size) {
                     fc = fc_candidate;
                     is_compressed = 0;
+                    ccpText = cp1;
                     found_pcdt = 1;
                     break;
                 }
@@ -134,14 +144,7 @@ static int wps_binary_extract_int(ole2_ctx_t *ole, char **out_text, size_t *out_
                 if (fc_candidate > 0 && fc_candidate < wd_size) {
                     fc = fc_candidate;
                     is_compressed = 0;
-                    found_pcdt = 1;
-                    break;
-                }
-
-                fc_candidate = flda & 0x3FFFFFFF;
-                if (fc_candidate > 0 && fc_candidate < wd_size) {
-                    fc = fc_candidate;
-                    is_compressed = (flda & 0x40000000) ? 1 : 0;
+                    ccpText = cp1;
                     found_pcdt = 1;
                     break;
                 }
