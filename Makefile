@@ -82,7 +82,6 @@ install: all
 	install -m 644 $(STATIC_LIB) $(DESTDIR)$(PREFIX)/lib/
 	install -m 755 $(SHARED_LIB) $(DESTDIR)$(PREFIX)/lib/
 	install -m 644 $(HEADER) $(DESTDIR)$(PREFIX)/include/
-	ldconfig
 
 # 卸载
 uninstall:
